@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const DatabaseFailoverManager = require('./database-failover');
+const SEP12Module = require('./src/modules/sep12-kyc/sep12.module');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -9,9 +10,28 @@ const port = process.env.PORT || 3000;
 // Initialize database failover manager
 const dbManager = new DatabaseFailoverManager();
 
+// Initialize SEP-12 KYC module
+const sep12Module = new SEP12Module(dbManager);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Initialize modules and register routes
+async function initializeApp() {
+  try {
+    // Initialize SEP-12 module
+    await sep12Module.initialize();
+    
+    // Register SEP-12 routes
+    sep12Module.registerRoutes(app);
+    
+    console.log('All modules initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize modules:', error.message);
+    process.exit(1);
+  }
+}
 
 app.get('/', (req, res) => {
   const dbStatus = dbManager.getStatus();
@@ -134,4 +154,10 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-app.listen(port, () => console.log(`Vesting API running on port ${port}`));
+// Start the server after initializing modules
+initializeApp().then(() => {
+  app.listen(port, () => {
+    console.log(`Vesting API running on port ${port}`);
+    console.log(`SEP-12 KYC endpoints available at http://localhost:${port}/kyc`);
+  });
+});
